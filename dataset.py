@@ -13,6 +13,88 @@ from PIL import Image
 import numpy as np
 
 
+import cv2
+import time
+import numpy as np
+import torch
+import torch.utils.data as data
+from torch.utils.data import DataLoader
+
+
+class Alphabet:
+    def __init__(self, alphabet_str) -> None:
+        pass
+
+    @property
+    def dict(self):
+        alphabet_dict = {}
+        for i, key in enumerate(alphabet_str):
+            alphabet_dict[key] = i + 1
+        return alphabet_dict
+
+
+def get_labels(alphabet, text_list):
+    target = []
+    target_length = []
+    for text in text_list:
+        for key in text:
+            target.append(alphabet[key.lower()])
+        target_length.append(len(text))
+    return torch.LongTensor(target), torch.LongTensor(target_length)
+
+
+class OcrDataset(data.Dataset):
+    def __init__(self, root_im, label_path):
+        self.im_list = []
+        self.labels = []
+        with open(label_path, 'r', encoding='utf-8') as f:
+            lines = f.readlines()
+
+        start_time = time.time()
+        for line in lines:
+            line = line.replace('\n', '')
+            line = line.replace(' ', '')
+            # index, name, Left, Right, Top, Bottom, Quality, Text
+            line = line.split(',')
+            if line[7] != 'None':
+                # print(root_im + line[1])
+                im = cv2.imread(root_im + line[1])
+
+                # In case that we cannot find the image via labels
+                if im is None:
+                    continue
+
+                im = self.preprocess(im, line)
+                self.im_list.append(im)
+                self.labels.append(line[7])
+            else:
+                continue
+        print('Finish Loading {} images in {:2f} seconds.' .format(
+            len(self.labels), time.time()-start_time))
+
+    def preprocess(self, im, line):
+        im_map = np.zeros((32, 640)).astype('uint8')
+        im = cv2.cvtColor(im, cv2.COLOR_BGR2GRAY)
+        left, right, top, bottom = int(line[2]), int(
+            line[3]), int(line[4]), int(line[5])
+        im = im[top:bottom, left:right]
+        h, w = im.shape[0:2]
+        im = cv2.resize(im, (int(w * 32 / h), 32))
+        im_map[:, :im.shape[1]] = im
+        return im_map
+
+    def __getitem__(self, index):
+        im = self.im_list[index]
+        im = torch.FloatTensor(im)
+        im = torch.unsqueeze(im, 0)
+
+        label = self.labels[index]
+        return im, label
+
+    def __len__(self):
+        return len(self.labels)
+
+
 class lmdbDataset(Dataset):
 
     def __init__(self, root=None, transform=None, target_transform=None):
@@ -134,3 +216,20 @@ class alignCollate(object):
         images = torch.cat([t.unsqueeze(0) for t in images], 0)
 
         return images, labels
+
+
+if __name__ == '__main__':
+    train_im_root = './data/train/images/'
+    train_label_path = './data/train/labels.csv'
+
+    alphabet_str = '0123456789abcdefghijklmnopqrstuvwxyz-'
+    alphabet = Alphabet(alphabet_str=alphabet_str)
+
+    train_dataset = OcrDataset(train_im_root, train_label_path)
+    train_loader = DataLoader(
+        train_dataset, batch_size=4, shuffle=True, num_workers=1)
+
+    for im, labels in train_loader:
+        target, target_length = get_labels(alphabet.dict, labels)
+        print("target:{}".format(target))
+        print("target_length:{}".format(target_length))
