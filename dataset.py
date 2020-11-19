@@ -6,7 +6,7 @@ import torch
 from torch.utils.data import Dataset
 from torch.utils.data import sampler
 import torchvision.transforms as transforms
-import lmdb
+# import lmdb
 import six
 import sys
 from PIL import Image
@@ -23,12 +23,12 @@ from torch.utils.data import DataLoader
 
 class Alphabet:
     def __init__(self, alphabet_str) -> None:
-        pass
+        self.alphabet_str = alphabet_str
 
     @property
     def dict(self):
         alphabet_dict = {}
-        for i, key in enumerate(alphabet_str):
+        for i, key in enumerate(self.alphabet_str):
             alphabet_dict[key] = i + 1
         return alphabet_dict
 
